@@ -21,5 +21,7 @@ public class BillingController {
         return ResponseEntity.ok(
                 billingService.generateBill(
                         reservationId));
+        
+        
     }
 }
