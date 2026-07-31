@@ -32,11 +32,16 @@ public class BillingServiceImpl
                         new ResourceNotFoundException(
                                 "Reservation not found"));
 
-        if (reservation.getEntryTime() == null
-                || reservation.getExitTime() == null) {
+        if(reservation.getEntryTime() == null){
 
             throw new IllegalStateException(
-                    "Entry and exit must be completed");
+                    "Vehicle has not entered parking");
+        }
+
+        if(reservation.getExitTime() == null){
+
+            throw new IllegalStateException(
+                    "Vehicle has not exited parking");
         }
 
         long hours =
@@ -45,13 +50,17 @@ public class BillingServiceImpl
                         reservation.getExitTime())
                         .toHours();
 
-        PricingStrategy pricingStrategy =
+        if(hours <= 0){
+            hours = 1;
+        }
+
+        PricingStrategy strategy =
                 pricingStrategyFactory
                         .getPricingStrategy();
 
         double amount =
-                pricingStrategy
-                        .calculatePrice(hours);
+                strategy.calculatePrice(
+                        hours);
 
         reservation.setBillAmount(amount);
 
