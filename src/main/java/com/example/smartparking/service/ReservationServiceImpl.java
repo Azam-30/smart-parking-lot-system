@@ -1,6 +1,7 @@
 package com.example.smartparking.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -207,5 +208,13 @@ public class ReservationServiceImpl implements ReservationService {
                         reservation.getStatus()
                                 .name())
                 .build();
+    }
+    @Override
+    public List<ReservationResponse> getAllReservations() {
+
+        return reservationRepository.findAll()
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 }

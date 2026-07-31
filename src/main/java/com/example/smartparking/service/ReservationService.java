@@ -1,5 +1,7 @@
 package com.example.smartparking.service;
 
+import java.util.List;
+
 import com.example.smartparking.dto.ReservationRequest;
 import com.example.smartparking.dto.ReservationResponse;
 
@@ -15,4 +17,6 @@ public interface ReservationService {
     ReservationResponse getReservation(Long reservationId);
 
     void cancelReservation(Long reservationId);
+    
+    List<ReservationResponse> getAllReservations();
 }
