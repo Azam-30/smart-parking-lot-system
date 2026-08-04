@@ -7,19 +7,19 @@ import lombok.Data;
 
 @Data
 @Builder
-public class ReservationResponse {
+public class BillResponse {
 
     private Long reservationId;
 
     private String registrationNumber;
 
-    private String username;
-
     private String slotNumber;
 
-    private LocalDateTime reservationTime;
+    private LocalDateTime entryTime;
 
-    private String status;
+    private LocalDateTime exitTime;
 
-    private Double billAmount;
+    private long durationHours;
+
+    private Double amount;
 }

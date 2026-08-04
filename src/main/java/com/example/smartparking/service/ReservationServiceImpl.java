@@ -3,6 +3,9 @@ package com.example.smartparking.service;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,11 +14,13 @@ import com.example.smartparking.dto.ReservationRequest;
 import com.example.smartparking.dto.ReservationResponse;
 import com.example.smartparking.entity.ParkingSlot;
 import com.example.smartparking.entity.Reservation;
+import com.example.smartparking.entity.User;
 import com.example.smartparking.entity.Vehicle;
 import com.example.smartparking.enums.ReservationStatus;
 import com.example.smartparking.exception.ResourceNotFoundException;
 import com.example.smartparking.repository.ParkingSlotRepository;
 import com.example.smartparking.repository.ReservationRepository;
+import com.example.smartparking.repository.UserRepository;
 import com.example.smartparking.repository.VehicleRepository;
 import com.example.smartparking.strategy.SlotAllocationStrategy;
 
@@ -24,13 +29,16 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 @Transactional
-public class ReservationServiceImpl implements ReservationService {
+public class ReservationServiceImpl
+        implements ReservationService {
 
     private final VehicleRepository vehicleRepository;
 
     private final ReservationRepository reservationRepository;
 
     private final ParkingSlotRepository parkingSlotRepository;
+
+    private final UserRepository userRepository;
 
     private final SlotAllocationStrategy slotAllocationStrategy;
 
@@ -43,6 +51,8 @@ public class ReservationServiceImpl implements ReservationService {
         lockManager.lock();
 
         try {
+
+            User currentUser = getCurrentUser();
 
             Vehicle vehicle = vehicleRepository
                     .findByRegistrationNumber(
@@ -58,8 +68,8 @@ public class ReservationServiceImpl implements ReservationService {
                                             .build()));
 
             ParkingSlot slot =
-                    slotAllocationStrategy.allocateSlot(
-                            vehicle);
+                    slotAllocationStrategy
+                            .allocateSlot(vehicle);
 
             slot.setOccupied(true);
 
@@ -67,6 +77,7 @@ public class ReservationServiceImpl implements ReservationService {
 
             Reservation reservation =
                     Reservation.builder()
+                            .user(currentUser)
                             .vehicle(vehicle)
                             .parkingSlot(slot)
                             .reservationTime(
@@ -82,19 +93,18 @@ public class ReservationServiceImpl implements ReservationService {
             return mapToResponse(saved);
 
         } finally {
+
             lockManager.unlock();
         }
     }
 
     @Override
-    public void markEntry(Long reservationId) {
+    public void markEntry(
+            Long reservationId) {
 
         Reservation reservation =
-                reservationRepository.findById(
-                        reservationId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Reservation not found"));
+                getAuthorizedReservation(
+                        reservationId);
 
         if (reservation.getStatus()
                 != ReservationStatus.RESERVED) {
@@ -114,14 +124,12 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     @Override
-    public void markExit(Long reservationId) {
+    public void markExit(
+            Long reservationId) {
 
         Reservation reservation =
-                reservationRepository.findById(
-                        reservationId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Reservation not found"));
+                getAuthorizedReservation(
+                        reservationId);
 
         if (reservation.getStatus()
                 != ReservationStatus.PARKED) {
@@ -141,7 +149,8 @@ public class ReservationServiceImpl implements ReservationService {
 
         slot.setOccupied(false);
 
-        parkingSlotRepository.save(slot);
+        parkingSlotRepository.save(
+                slot);
 
         reservationRepository.save(
                 reservation);
@@ -152,13 +161,11 @@ public class ReservationServiceImpl implements ReservationService {
             Long reservationId) {
 
         Reservation reservation =
-                reservationRepository.findById(
-                        reservationId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Reservation not found"));
+                getAuthorizedReservation(
+                        reservationId);
 
-        return mapToResponse(reservation);
+        return mapToResponse(
+                reservation);
     }
 
     @Override
@@ -166,11 +173,8 @@ public class ReservationServiceImpl implements ReservationService {
             Long reservationId) {
 
         Reservation reservation =
-                reservationRepository.findById(
-                        reservationId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Reservation not found"));
+                getAuthorizedReservation(
+                        reservationId);
 
         if (reservation.getStatus()
                 == ReservationStatus.PARKED) {
@@ -184,7 +188,8 @@ public class ReservationServiceImpl implements ReservationService {
 
         slot.setOccupied(false);
 
-        parkingSlotRepository.save(slot);
+        parkingSlotRepository.save(
+                slot);
 
         reservation.setStatus(
                 ReservationStatus.CANCELLED);
@@ -193,28 +198,125 @@ public class ReservationServiceImpl implements ReservationService {
                 reservation);
     }
 
+    @Override
+    public List<ReservationResponse>
+    getAllReservations() {
+
+        if (isAdmin()) {
+
+            return reservationRepository
+                    .findAll()
+                    .stream()
+                    .map(this::mapToResponse)
+                    .toList();
+        }
+
+        return reservationRepository
+                .findByUserUsername(
+                        getLoggedInUsername())
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    private Reservation getAuthorizedReservation(
+            Long reservationId) {
+
+        Reservation reservation =
+                reservationRepository.findById(
+                        reservationId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Reservation not found"));
+
+        if (!isAdmin()) {
+
+            validateOwnership(
+                    reservation);
+        }
+
+        return reservation;
+    }
+
+    private void validateOwnership(
+            Reservation reservation) {
+
+        String loggedInUser =
+                getLoggedInUsername();
+
+        String owner =
+                reservation.getUser()
+                        .getUsername();
+
+        if (!owner.equals(loggedInUser)) {
+
+            throw new AccessDeniedException(
+                    "You are not allowed to access this reservation");
+        }
+    }
+
+    private User getCurrentUser() {
+
+        return userRepository
+                .findByUsername(
+                        getLoggedInUsername())
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "User not found"));
+    }
+
+    private String getLoggedInUsername() {
+
+        Authentication authentication =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        return authentication.getName();
+    }
+
+    private boolean isAdmin() {
+
+        return SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getAuthorities()
+                .stream()
+                .anyMatch(authority ->
+                        authority.getAuthority()
+                                .equals("ROLE_ADMIN"));
+    }
+
     private ReservationResponse mapToResponse(
             Reservation reservation) {
 
         return ReservationResponse.builder()
+
                 .reservationId(
                         reservation.getId())
+
+                .registrationNumber(
+                        reservation.getVehicle()
+                                .getRegistrationNumber())
+
                 .slotNumber(
                         reservation.getParkingSlot()
                                 .getSlotNumber())
+
+                .username(
+                        reservation.getUser()
+                                .getUsername())
+
                 .reservationTime(
                         reservation.getReservationTime())
+
                 .status(
                         reservation.getStatus()
                                 .name())
-                .build();
-    }
-    @Override
-    public List<ReservationResponse> getAllReservations() {
 
-        return reservationRepository.findAll()
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
+                .billAmount(
+                        reservation.getBillAmount())
+
+                .build();
     }
 }

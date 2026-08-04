@@ -14,9 +14,12 @@ public interface ReservationService {
 
     void markExit(Long reservationId);
 
-    ReservationResponse getReservation(Long reservationId);
+    ReservationResponse getReservation(
+            Long reservationId);
 
-    void cancelReservation(Long reservationId);
-    
-    List<ReservationResponse> getAllReservations();
+    void cancelReservation(
+            Long reservationId);
+
+    List<ReservationResponse>
+    getAllReservations();
 }

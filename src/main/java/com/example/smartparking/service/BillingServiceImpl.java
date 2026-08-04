@@ -4,10 +4,10 @@ import java.time.Duration;
 
 import org.springframework.stereotype.Service;
 
+import com.example.smartparking.dto.BillResponse;
 import com.example.smartparking.entity.Reservation;
 import com.example.smartparking.exception.ResourceNotFoundException;
 import com.example.smartparking.repository.ReservationRepository;
-import com.example.smartparking.strategy.PricingStrategy;
 import com.example.smartparking.strategy.PricingStrategyFactory;
 
 import lombok.RequiredArgsConstructor;
@@ -22,7 +22,7 @@ public class BillingServiceImpl
     private final PricingStrategyFactory pricingStrategyFactory;
 
     @Override
-    public Double generateBill(
+    public BillResponse generateBill(
             Long reservationId) {
 
         Reservation reservation =
@@ -50,23 +50,64 @@ public class BillingServiceImpl
                         reservation.getExitTime())
                         .toHours();
 
-        if(hours <= 0){
+        if(hours == 0){
+
             hours = 1;
         }
 
-        PricingStrategy strategy =
-                pricingStrategyFactory
-                        .getPricingStrategy();
+        double amount = 0;
 
-        double amount =
-                strategy.calculatePrice(
-                        hours);
+        switch (
+                reservation.getVehicle()
+                        .getVehicleType()) {
 
-        reservation.setBillAmount(amount);
+            case CAR:
+                amount = hours * 50;
+                break;
+
+            case BIKE:
+                amount = hours * 20;
+                break;
+
+            case TRUCK:
+                amount = hours * 100;
+                break;
+        }
+
+        if(reservation.getVehicle().isEv()){
+
+            amount += hours * 30;
+        }
+
+        reservation.setBillAmount(
+                amount);
 
         reservationRepository.save(
                 reservation);
 
-        return amount;
+        return BillResponse.builder()
+
+                .reservationId(
+                        reservation.getId())
+
+                .registrationNumber(
+                        reservation.getVehicle()
+                                .getRegistrationNumber())
+
+                .slotNumber(
+                        reservation.getParkingSlot()
+                                .getSlotNumber())
+
+                .entryTime(
+                        reservation.getEntryTime())
+
+                .exitTime(
+                        reservation.getExitTime())
+
+                .durationHours(hours)
+
+                .amount(amount)
+
+                .build();
     }
 }
